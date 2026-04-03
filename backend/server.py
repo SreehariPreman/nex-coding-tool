@@ -11,7 +11,8 @@ DEFAULT_PASSWORD = 'password'
 def home():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
-    return render_template('index.html')
+    username = session.get('username', DEFAULT_USERNAME)
+    return render_template('index.html', username=username)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -20,6 +21,7 @@ def login():
         password = request.form.get('password')
         if username == DEFAULT_USERNAME and password == DEFAULT_PASSWORD:
             session['logged_in'] = True
+            session['username'] = username
             return redirect(url_for('home'))
         else:
             flash('Invalid username or password', 'error')
