@@ -28,12 +28,7 @@ def stderr_console() -> Console:
 
 
 def prompt_markup(cwd: str = "") -> str:
-    if cwd:
-        p = Path(cwd)
-        path_name = p.name if p.name else str(p)
-    else:
-        path_name = "~"
-    return f"[bold cyan]╭─[/][bold bright_blue]nex[/] [magenta]✨[/] [dim]{path_name}[/]\n[bold cyan]╰─❯[/] "
+    return "[bold cyan]╭─[/][bold bright_blue]nex[/] [magenta]✨[/]\n[bold cyan]╰─❯[/] "
 
 
 def _get_git_branch(cwd: str) -> str | None:
@@ -81,7 +76,12 @@ def _get_project_stats(cwd: str) -> str:
 
 
 def print_welcome(console: Console, cwd: str) -> None:
-    title = Text("Nex Workspace", style="bold bright_blue")
+    try:
+        import pyfiglet
+        ascii_logo = pyfiglet.figlet_format("NEX Coding", font="slant")
+        title = Text(ascii_logo, style="bold cyan")
+    except ImportError:
+        title = Text("NEX Coding", style="bold cyan")
     
     table = Table.grid(padding=(0, 2))
     table.add_column(style="dim", justify="right")
@@ -118,15 +118,8 @@ def print_welcome(console: Console, cwd: str) -> None:
     console.print()
     
     # Sleek footer
-    footer = Text()
-    footer.append(" [dim]Shortcuts: [/]")
-    footer.append("help", style="bold cyan")
-    footer.append(" [dim]|[/] ")
-    footer.append("Ctrl+C", style="bold cyan")
-    footer.append(" [dim]cancel[/] ")
-    footer.append(" [dim]|[/] ")
-    footer.append("Ctrl+D", style="bold cyan")
-    footer.append(" [dim]exit[/] ")
+    footer_text = " [dim]Shortcuts: [/][bold cyan]help[/] [dim]|[/] [bold cyan]Ctrl+C[/] [dim]cancel[/] [dim]|[/] [bold cyan]Ctrl+D[/] [dim]exit[/] "
+    footer = Text.from_markup(footer_text)
     
     console.print(Align.center(footer))
     console.print()
