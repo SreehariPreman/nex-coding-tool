@@ -10,8 +10,8 @@ def is_prime(n):
             return False
     return True
 
-print("Prime numbers till 20:")
-for num in range(2, 21):
+print("Prime numbers till 30:")
+for num in range(2, 31):
     if is_prime(num):
         print(num, end=" ")
 print()
