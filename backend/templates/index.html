@@ -2,43 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Welcome</title>
-    <style>
-        body {
-            display: flex;
-            height: 100vh;
-            align-items: center;
-            justify-content: center;
-            font-family: Arial, sans-serif;
-            background: #f7f7fa;
-        }
-        .welcome {
-            padding: 2em 4em;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 16px #0002;
-            font-size: 2em;
-            color: #333;
-        }
-        .logout {
-            margin-top: 1em;
-            display: flex;
-            justify-content: center;
-        }
-        .logout a {
-            color: #007bff;
-            text-decoration: none;
-            font-size: 1em;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div>
-        <div class="welcome">Welcome {{ username|capitalize }}</div>
-        <div class="logout">
-            <a href="/logout">Logout</a>
-        </div>
+    <div class="container">
+        <h1>Welcome to the Flask Web App!</h1>
     </div>
 </body>
 </html>
