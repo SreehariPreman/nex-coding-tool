@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Terminal-based coding CLI (scaffold)."
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "rich>=13.7.0",
+]
 
 [project.scripts]
 nex-coding = "nex_coding.cli:main"
