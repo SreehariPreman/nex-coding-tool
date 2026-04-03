@@ -75,13 +75,13 @@ def _get_project_stats(cwd: str) -> str:
         return ""
 
 
-def print_welcome(console: Console, cwd: str) -> None:
+def print_welcome(console: Console, cwd: str, config: dict = None) -> None:
     try:
         import pyfiglet
-        ascii_logo = pyfiglet.figlet_format("NEX Coding", font="slant")
+        ascii_logo = pyfiglet.figlet_format("NEXUS", font="slant")
         title = Text(ascii_logo, style="bold cyan")
     except ImportError:
-        title = Text("NEX Coding", style="bold cyan")
+        title = Text("NEXUS", style="bold cyan")
     
     table = Table.grid(padding=(0, 2))
     table.add_column(style="dim", justify="right")
@@ -98,6 +98,11 @@ def print_welcome(console: Console, cwd: str) -> None:
     stats = _get_project_stats(cwd)
     if stats:
         table.add_row("Contents", f"[dim]{stats}[/]")
+        
+    if config and config.get("provider") and config.get("provider") != "none":
+        p = config.get("provider").capitalize()
+        m = config.get("model") or "default"
+        table.add_row("LLM Backend", f"[bold yellow]⚡ {p}[/] [dim]({m})[/]")
 
     inner = Group(
         Align.center(title),

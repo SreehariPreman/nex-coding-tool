@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 from nex_coding import ui
+from nex_coding.config import load_config, validate_config
+import time
 
 # Handled in this process so state (cwd) matches what users expect.
 _INTERNAL = frozenset({"cd", "pwd", "exit", "quit", "help", "clear"})
@@ -100,7 +102,36 @@ def run_interactive_shell(start_dir: Path | None) -> int:
     except ImportError:
         pass
 
-    ui.print_welcome(out, os.getcwd())
+    _clear_screen()
+    out.print("\n[bold dim]nex starting...[/]")
+    time.sleep(0.2)
+    
+    cfg = load_config(os.getcwd())
+    src = cfg.get("_source", "None")
+    is_valid, msg = validate_config(cfg)
+    
+    if src != "None":
+        out.print(f"[green]✓[/] Config found — {Path(src).name}")
+    else:
+        out.print("[yellow]![/] No active config found")
+
+    provider = cfg.get("provider")
+    if provider and provider != "none":
+        out.print(f"[green]✓[/] Provider — {provider.capitalize()}")
+    
+    model = cfg.get("model")
+    if model:
+        out.print(f"[green]✓[/] Model — {model}")
+        
+    if provider and provider != "none":
+        if is_valid:
+            out.print("[green]✓[/] API key — valid")
+            out.print("[green]✓[/] Ready")
+        else:
+            out.print(f"[red]✗[/] API key invalid — {msg}. Check {Path(src).name}")
+    
+    time.sleep(0.4)
+    ui.print_welcome(out, os.getcwd(), cfg)
 
     while True:
         try:

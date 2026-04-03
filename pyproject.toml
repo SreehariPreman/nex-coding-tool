@@ -11,6 +11,8 @@ requires-python = ">=3.9"
 dependencies = [
     "rich>=13.7.0",
     "pyfiglet",
+    "tomli; python_version < '3.11'",
+    "requests",
 ]
 
 [project.scripts]
