@@ -1,9 +1,16 @@
-"""Git-backed commit for confirmed saves and single-step undo."""
+"""File-snapshot based undo for Nex saves.
+
+No git commits are made. Before writing files to disk, Nex snapshots the
+previous content (or absence) of each path into .nex/last_save.json.
+'undo' restores those snapshots by writing the old content back (or deleting
+newly created files).
+
+Git is left entirely to the user.
+"""
 
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,28 +19,6 @@ from typing import Any
 
 NEX_DIR = ".nex"
 LAST_SAVE = "last_save.json"
-
-
-def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args],
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-def is_git_repo(cwd: Path) -> bool:
-    p = _git(cwd, "rev-parse", "--is-inside-work-tree")
-    return p.returncode == 0 and p.stdout.strip() == "true"
-
-
-def current_head(cwd: Path) -> str | None:
-    p = _git(cwd, "rev-parse", "HEAD")
-    if p.returncode != 0:
-        return None
-    return p.stdout.strip()
 
 
 def _state_path(cwd: Path) -> Path:
@@ -63,46 +48,45 @@ def _clear_state(cwd: Path) -> None:
 
 
 @dataclass
-class CommitResult:
+class SnapshotResult:
     ok: bool
     message: str
-    commit_sha: str | None = None
 
 
-def commit_paths(cwd: Path, relative_paths: list[str], summary: str) -> CommitResult:
-    """Stage *relative_paths*, commit if there is a diff, record undo metadata."""
-    if not is_git_repo(cwd):
-        return CommitResult(False, "Not a git repository. Run `git init` to enable undo.")
+def record_pre_write_snapshot(
+    cwd: Path,
+    paths: list[str],
+    summary: str,
+) -> SnapshotResult:
+    """Snapshot the current on-disk content of *paths* before Nex overwrites them.
 
-    for rel in relative_paths:
-        p = _git(cwd, "add", "--", rel)
-        if p.returncode != 0:
-            return CommitResult(False, f"git add failed: {p.stderr.strip() or p.stdout.strip()}")
+    For each path:
+      - If the file exists  → store its content so undo can restore it.
+      - If the file is new  → store None so undo knows to delete it.
 
-    st = _git(cwd, "diff", "--cached", "--quiet")
-    if st.returncode == 0:
-        return CommitResult(
-            True,
-            "Files saved. No new git commit (staged changes match HEAD).",
-            commit_sha=current_head(cwd),
-        )
+    Call this BEFORE writing files to disk.
+    """
+    snapshots: list[dict[str, Any]] = []
+    for rel in paths:
+        abs_path = (cwd / rel).resolve()
+        if abs_path.is_file():
+            try:
+                old_content = abs_path.read_text(encoding="utf-8")
+            except Exception:
+                old_content = None
+            snapshots.append({"path": rel, "existed": True, "content": old_content})
+        else:
+            snapshots.append({"path": rel, "existed": False, "content": None})
 
-    msg = f"nex: {summary}"[:72]
-    c = _git(cwd, "commit", "-m", msg)
-    if c.returncode != 0:
-        return CommitResult(False, f"git commit failed: {c.stderr.strip() or c.stdout.strip()}")
-
-    sha = current_head(cwd)
-    if sha:
-        _write_state(
-            cwd,
-            {
-                "commit_sha": sha,
-                "paths": relative_paths,
-                "saved_at": datetime.now(timezone.utc).isoformat(),
-            },
-        )
-    return CommitResult(True, f"Committed {len(relative_paths)} file(s).", commit_sha=sha)
+    _write_state(
+        cwd,
+        {
+            "summary": summary,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "snapshots": snapshots,
+        },
+    )
+    return SnapshotResult(ok=True, message=f"Snapshot recorded for {len(paths)} file(s).")
 
 
 @dataclass
@@ -112,35 +96,53 @@ class UndoResult:
 
 
 def undo_last_save(cwd: Path) -> UndoResult:
-    """Reset HEAD to the parent of the last Nex commit if HEAD still matches."""
-    if not is_git_repo(cwd):
-        return UndoResult(False, "Not a git repository.")
-
+    """Restore the on-disk state from the last Nex pre-write snapshot."""
     state = _load_state(cwd)
-    if not state or not state.get("commit_sha"):
+    if not state or not state.get("snapshots"):
         return UndoResult(False, "No recorded Nex save to undo.")
 
-    head = current_head(cwd)
-    if not head:
-        return UndoResult(False, "Could not read HEAD.")
+    snapshots: list[dict[str, Any]] = state["snapshots"]
+    restored: list[str] = []
+    deleted: list[str] = []
+    errors: list[str] = []
 
-    if head != state["commit_sha"]:
-        return UndoResult(
-            False,
-            "Cannot undo: repository HEAD does not match the last Nex save "
-            "(history changed). Use git manually if needed.",
-        )
+    for snap in snapshots:
+        rel = snap["path"]
+        abs_path = (cwd / rel).resolve()
+        existed: bool = snap.get("existed", False)
+        content: str | None = snap.get("content")
 
-    dirty = _git(cwd, "status", "--porcelain")
-    if dirty.stdout.strip():
-        return UndoResult(
-            False,
-            "Cannot undo: working tree is not clean. Commit or stash changes first.",
-        )
+        if existed and content is not None:
+            # Restore the old content
+            try:
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+                abs_path.write_text(content, encoding="utf-8")
+                restored.append(rel)
+            except OSError as exc:
+                errors.append(f"{rel}: {exc}")
+        elif not existed:
+            # File was newly created by Nex — delete it
+            try:
+                if abs_path.is_file():
+                    abs_path.unlink()
+                    deleted.append(rel)
+                    # Remove empty parent dirs
+                    try:
+                        abs_path.parent.rmdir()
+                    except OSError:
+                        pass
+            except OSError as exc:
+                errors.append(f"{rel}: {exc}")
 
-    r = _git(cwd, "reset", "--hard", "HEAD~1")
-    if r.returncode != 0:
-        return UndoResult(False, f"git reset failed: {r.stderr.strip() or r.stdout.strip()}")
+    if errors:
+        return UndoResult(False, f"Undo partially failed: {'; '.join(errors)}")
 
     _clear_state(cwd)
-    return UndoResult(True, "Reverted the last Nex commit (hard reset to parent).")
+
+    parts: list[str] = []
+    if restored:
+        parts.append(f"restored {len(restored)} file(s)")
+    if deleted:
+        parts.append(f"deleted {len(deleted)} new file(s)")
+    msg = "Undo complete — " + ", ".join(parts) + "." if parts else "Nothing to undo."
+    return UndoResult(True, msg)

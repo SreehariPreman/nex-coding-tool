@@ -21,7 +21,7 @@ from nex_coding import ui
 from nex_coding.coding_agent import run_coding_agent
 from nex_coding.config import load_config, validate_config
 from nex_coding.fs_safe import resolve_under_root
-from nex_coding.git_undo import commit_paths, is_git_repo, undo_last_save
+from nex_coding.git_undo import record_pre_write_snapshot, undo_last_save
 from nex_coding.session import SessionContext
 
 
@@ -335,27 +335,21 @@ def run_task_and_confirm(
         if skipped:
             out.print(f"[dim]Saving {len(to_save)} of {total_staged} files ({skipped} skipped).[/]")
 
+    # Snapshot current on-disk state BEFORE writing — enables undo without git
+    snippet = task.replace("\n", " ").strip()[:60]
+    record_pre_write_snapshot(
+        cwd.resolve(),
+        [item["path"] for item in to_save],
+        snippet or "agent save",
+    )
+
     try:
         paths = _apply_staged(cwd.resolve(), to_save)
     except OSError as exc:
         ui.print_error(err, f"Failed to write files: {exc}")
         return 1
 
-    out.print(f"[green]Saved {len(paths)} file(s).[/]")
-
-    if is_git_repo(cwd):
-        snippet = task.replace("\n", " ").strip()[:60]
-        cr = commit_paths(cwd.resolve(), paths, snippet or "agent save")
-        if cr.ok:
-            out.print(f"[dim]{cr.message}[/]")
-        else:
-            ui.print_error(
-                err,
-                f"{cr.message} Files are on disk; fix git and commit manually if needed.",
-            )
-            return 1
-    else:
-        out.print("[dim]Not a git repo — files saved without commit (undo unavailable).[/]")
+    out.print(f"[green]✓ Saved {len(paths)} file(s).[/] [dim](type [bold]undo[/] to revert)[/]")
 
     # Record the completed turn into the session
     if session:
