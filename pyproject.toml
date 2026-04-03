@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nex-coding-tool"
+version = "0.1.0"
+description = "Terminal-based coding CLI (scaffold)."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+nex-coding = "nex_coding.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nex_coding*"]
