@@ -125,7 +125,8 @@ def print_welcome(console: Console, cwd: str, config: dict = None) -> None:
     # Sleek footer
     footer_text = (
         " [dim]Shortcuts: [/][bold cyan]create[/] [dim]/[/] [bold cyan]agent[/] [dim]task ·[/] "
-        "[bold cyan]undo[/] [dim]·[/] [bold cyan]help[/] [dim]|[/] [bold cyan]Ctrl+C[/] [dim]|[/] [bold cyan]Ctrl+D[/] [dim]exit[/] "
+        "[bold cyan]undo[/] [dim]·[/] [bold cyan]history[/] [dim]·[/] [bold cyan]context[/] [dim]·[/] "
+        "[bold cyan]help[/] [dim]|[/] [bold cyan]Ctrl+C[/] [dim]|[/] [bold cyan]Ctrl+D[/] [dim]exit[/] "
     )
     footer = Text.from_markup(footer_text)
     
@@ -154,7 +155,9 @@ def print_help(
     console.print(
         "[dim]Coding agent (same as CLI, stays in shell): [/]"
         "[bold cyan]create[/] [dim]or[/] [bold cyan]agent[/] [dim]then your request;[/] "
-        "[bold cyan]undo[/] [dim]reverts the last confirmed Nex git save.[/]"
+        "[bold cyan]undo[/] [dim]reverts the last confirmed Nex git save.[/]\n"
+        "[dim]Session: [/][bold cyan]history[/] [dim]shows past turns ·[/] "
+        "[bold cyan]context[/] [dim]shows files saved this session (auto-fed to LLM).[/]"
     )
     console.print()
 

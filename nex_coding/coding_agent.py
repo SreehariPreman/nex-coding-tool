@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
 from nex_coding.fs_safe import resolve_under_root
@@ -277,12 +277,19 @@ def run_coding_agent(
     user_request: str,
     config: dict[str, Any],
     *,
+    history: list[tuple[str, str]] | None = None,
+    context_banner: str = "",
     recursion_limit: int = 40,
     stream_tokens: Callable[[str], None] | None = None,
 ) -> tuple[list[dict[str, str]], str]:
     """
     Run the LangGraph agent. Returns (staged_writes, assistant_summary).
     staged_writes: list of {path, content}.
+
+    history: list of (role, text) pairs from prior turns.
+             role is 'user' or 'assistant'.
+    context_banner: optional text injected at the top of the user request
+                    to remind the LLM what has already been built.
     If *stream_tokens* is set, model output is streamed chunk-by-chunk to the terminal.
     """
     try:
@@ -317,7 +324,22 @@ def run_coding_agent(
     )
 
     graph = create_react_agent(model, tools)
-    messages = [SystemMessage(content=system), HumanMessage(content=user_request)]
+
+    # Build message list: system + prior history + current request
+    messages: list[Any] = [SystemMessage(content=system)]
+
+    for role, text in (history or []):
+        if not text.strip():
+            continue
+        if role == "user":
+            messages.append(HumanMessage(content=text))
+        elif role == "assistant":
+            messages.append(AIMessage(content=text))
+
+    # Prepend the context banner (saved-files summary) to the current request
+    full_request = (context_banner + user_request) if context_banner else user_request
+    messages.append(HumanMessage(content=full_request))
+
     run_config = {"recursion_limit": recursion_limit}
     state = {"messages": messages}
 

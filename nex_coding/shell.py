@@ -11,6 +11,7 @@ from pathlib import Path
 
 from nex_coding import ui
 from nex_coding.config import load_config, validate_config
+from nex_coding.session import SessionContext
 from nex_coding.task_runner import run_task_and_confirm, run_undo
 import time
 
@@ -26,6 +27,8 @@ _INTERNAL = frozenset(
         "create",
         "agent",
         "undo",
+        "history",
+        "context",
     }
 )
 
@@ -94,10 +97,60 @@ def _resolve_cd_target(raw: str) -> Path:
     return p
 
 
+def _print_session_history(console, session) -> None:
+    """Display the conversation history for the current session."""
+    from rich import box
+    from rich.panel import Panel
+    from rich.rule import Rule
+    from rich.table import Table
+
+    if not session.turns:
+        console.print("[dim]No conversation history yet in this session.[/]")
+        return
+
+    console.print()
+    console.print(Rule("[bold cyan]Session History[/]", style="cyan"))
+    for i, turn in enumerate(session.turns, 1):
+        req_short = turn.request.replace("\n", " ")[:80]
+        status = "[red]discarded[/]" if turn.discarded else (
+            f"[green]saved {len(turn.saved)} file(s)[/]" if turn.saved else "[dim]no files[/]"
+        )
+        console.print(f"  [bold cyan]{i}.[/] [white]{req_short}[/]")
+        console.print(f"     {status}")
+        if turn.staged and not turn.discarded:
+            for f in turn.staged:
+                mark = "✔" if f in turn.saved else "✘"
+                color = "green" if f in turn.saved else "dim"
+                console.print(f"     [{color}]{mark} {f}[/]")
+    console.print()
+
+
+def _print_session_context(console, session) -> None:
+    """Display the saved-files snapshot for the current session."""
+    from rich.rule import Rule
+    from rich.tree import Tree
+
+    if not session.saved_files:
+        console.print("[dim]No files saved in this session yet.[/]")
+        return
+
+    console.print()
+    console.print(Rule("[bold cyan]Session Context[/] [dim](files on disk from this session)[/]", style="cyan"))
+    tree = Tree("[bold cyan]📦 Saved this session[/]", guide_style="dim cyan")
+    for path in sorted(session.saved_files):
+        lines = session.saved_files[path].count("\n") + 1
+        tree.add(f"[white]{path}[/]  [dim]{lines} lines[/]")
+    console.print(tree)
+    console.print()
+
+
 def run_interactive_shell(start_dir: Path | None) -> int:
     """Run until the user exits. Returns a process exit code."""
     out = ui.stdout_console()
     err = ui.stderr_console()
+
+    # One session context per shell invocation
+    session = SessionContext()
 
     base = (start_dir or Path.cwd()).resolve()
     if not base.is_dir():
@@ -207,7 +260,7 @@ def run_interactive_shell(start_dir: Path | None) -> int:
                 task = " ".join(parts).strip()
             else:
                 task = " ".join(args).strip()
-                
+
             if not task:
                 ui.print_error(
                     err,
@@ -215,11 +268,19 @@ def run_interactive_shell(start_dir: Path | None) -> int:
                 )
                 continue
             from nex_coding.task_runner import run_task_and_confirm
-            run_task_and_confirm(Path(os.getcwd()).resolve(), task)
+            run_task_and_confirm(Path(os.getcwd()).resolve(), task, session)
             continue
 
         if cmd == "undo":
             run_undo(Path(os.getcwd()).resolve())
+            continue
+
+        if cmd == "history":
+            _print_session_history(out, session)
+            continue
+
+        if cmd == "context":
+            _print_session_context(out, session)
             continue
 
         if cmd in _INTERNAL:

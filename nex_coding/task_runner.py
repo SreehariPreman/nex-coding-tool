@@ -22,6 +22,7 @@ from nex_coding.coding_agent import run_coding_agent
 from nex_coding.config import load_config, validate_config
 from nex_coding.fs_safe import resolve_under_root
 from nex_coding.git_undo import commit_paths, is_git_repo, undo_last_save
+from nex_coding.session import SessionContext
 
 
 # Map file extensions to Rich/Pygments lexer names
@@ -189,8 +190,17 @@ def _apply_staged(root: Path, staged: list[dict[str, str]]) -> list[str]:
     return written
 
 
-def run_task_and_confirm(cwd: Path, task: str) -> int:
-    """Execute agent flow with confirmation. Returns process exit code."""
+def run_task_and_confirm(
+    cwd: Path,
+    task: str,
+    session: SessionContext | None = None,
+) -> int:
+    """Execute agent flow with confirmation. Returns process exit code.
+
+    session: if provided, prior conversation history and saved-file context
+             are injected into the agent, and the completed turn is recorded
+             back into the session for future calls.
+    """
     out = ui.stdout_console()
     err = ui.stderr_console()
 
@@ -219,9 +229,26 @@ def run_task_and_confirm(cwd: Path, task: str) -> int:
                 context_text += f"\n\n--- Mentioned File: {m} ---\n{file_content}\n---------------------------\n"
         except Exception:
             pass
-            
+
     if context_text:
         task += "\n" + context_text
+
+    # Pull session context if available
+    history = session.prior_messages_for_agent() if session else []
+    context_banner = session.context_banner() if session else ""
+
+    # Record the user turn in session before calling agent
+    if session:
+        session.record_user(task)
+
+    # Show context indicator if we have prior turns
+    if session and session.has_context():
+        turn_num = session.turn_count + 1
+        saved_count = len(session.saved_files)
+        out.print(
+            f"[dim cyan]Context: turn {turn_num} · "
+            f"{saved_count} file{'s' if saved_count != 1 else ''} in session[/]"
+        )
 
     try:
         out.print(Rule("[bold cyan]Agent[/]", style="cyan"))
@@ -229,6 +256,8 @@ def run_task_and_confirm(cwd: Path, task: str) -> int:
             cwd.resolve(),
             task,
             cfg,
+            history=history,
+            context_banner=context_banner,
             stream_tokens=_stream_to_terminal,
         )
     except RuntimeError as exc:
@@ -248,6 +277,10 @@ def run_task_and_confirm(cwd: Path, task: str) -> int:
     _preview_staged(out, cwd, staged)
 
     if not staged:
+        # Still record assistant response so history is coherent
+        if session:
+            session.record_assistant(summary)
+            session.record_turn(request=task, summary=summary, staged=[], saved=[])
         return 0
 
     total_staged = len(staged)
@@ -267,6 +300,9 @@ def run_task_and_confirm(cwd: Path, task: str) -> int:
     # Determine which staged entries to actually save
     if answer in ("n", "no", ""):
         out.print("[dim]Discarded staged changes — disk unchanged.[/]")
+        if session:
+            session.record_assistant(summary)
+            session.record_turn(request=task, summary=summary, staged=staged, saved=[], discarded=True)
         return 0
     elif answer in ("y", "yes"):
         to_save = staged
@@ -320,6 +356,16 @@ def run_task_and_confirm(cwd: Path, task: str) -> int:
             return 1
     else:
         out.print("[dim]Not a git repo — files saved without commit (undo unavailable).[/]")
+
+    # Record the completed turn into the session
+    if session:
+        session.record_assistant(summary)
+        session.record_turn(
+            request=task,
+            summary=summary,
+            staged=staged,
+            saved=paths,
+        )
 
     return 0
 
