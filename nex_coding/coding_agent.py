@@ -63,17 +63,39 @@ def _make_tools(
 
     @tool
     def stage_file_write(relative_path: str, content: str) -> str:
-        """Stage a full file body for the given path relative to the project root. Does NOT write to disk until the user confirms save. Call once per file; include complete working code."""
+        """Stage a complete file for writing, given a path relative to the project root.
+
+        Rules:
+        - Call this once per file you want to create or modify.
+        - For multi-file projects (e.g. web apps, packages) call this for EVERY file in the plan.
+        - Include the FULL, COMPLETE content of each file — never truncate with comments like '# rest of file'.
+        - Use conventional directory layouts:
+          * Python packages: src/<package>/__init__.py, src/<package>/module.py, pyproject.toml, README.md
+          * Web apps: frontend/index.html, frontend/style.css, frontend/app.js, backend/server.py, etc.
+          * Node projects: src/index.js, package.json, .gitignore, README.md
+        - Nested directories are created automatically; you may stage paths like 'backend/app.py'.
+        - Nothing is written to disk until the user confirms.
+        """
         try:
             resolve_under_root(root, relative_path)
         except ValueError as exc:
             return f"Error: {exc}"
-        if not relative_path.strip():
+        clean_path = relative_path.strip().lstrip("/")
+        if not clean_path:
             return "Error: empty path."
-        staged_writes.append({"path": relative_path.strip().lstrip("/"), "content": content})
+        # Deduplicate: replace any previous staging of the same path
+        for existing in staged_writes:
+            if existing["path"] == clean_path:
+                existing["content"] = content
+                return (
+            f"Updated staged `{clean_path}` ({len(content)} chars). "
+            f"Nothing is on disk yet — the user must confirm save."
+        )
+        staged_writes.append({"path": clean_path, "content": content})
+        total = len(staged_writes)
         return (
-            f"Staged `{relative_path}` ({len(content)} characters). "
-            "Nothing is on disk yet — the user must confirm save."
+            f"Staged `{clean_path}` ({len(content)} chars) — "
+            f"{total} file(s) staged so far. Nothing is on disk yet."
         )
 
     return [read_file, list_directory, stage_file_write]
@@ -276,13 +298,22 @@ def run_coding_agent(
     model = _build_chat_model(config)
 
     system = (
-        "You are Nex, an expert coding agent operating inside a single project directory.\n"
+        "You are Nex, an expert full-stack coding agent operating inside a single project directory.\n"
         f"Project root (all paths are relative to this): {root.resolve()}\n\n"
-        "Use list_directory and read_file to explore the codebase when helpful.\n"
-        "To deliver work, call stage_file_write once per file with the FULL path relative to the project root "
-        "and the COMPLETE file contents. Prefer conventional layouts (e.g. src/package/module.py).\n"
-        "Do not claim files exist on disk until the user confirms save — only staged writes count.\n"
-        "Produce working, idiomatic code. If the user asked for a module, include what they need to run or import it."
+        "## Exploration\n"
+        "Use list_directory and read_file to understand any existing codebase before making changes.\n\n"
+        "## Delivering work\n"
+        "Call stage_file_write for EVERY file in your plan. Key rules:\n"
+        "  1. Stage ALL files needed — do not skip boilerplate (e.g. __init__.py, package.json, .gitignore, README.md).\n"
+        "  2. Each file must contain COMPLETE, working code — no truncation, no '# TODO: fill this in'.\n"
+        "  3. Use conventional project layouts for the type of project requested.\n"
+        "  4. When a user asks for a web app, include: HTML, CSS, JS frontend files AND a backend server file.\n"
+        "  5. When a user asks for a Python package, include: __init__.py, pyproject.toml, README.md, and all modules.\n"
+        "  6. Paths MUST be relative to the project root (e.g. 'backend/server.py', 'frontend/index.html').\n"
+        "  7. Nested directories are created automatically — no need to create them explicitly.\n"
+        "  8. Do not claim anything is on disk until the user confirms save.\n\n"
+        "## Output\n"
+        "After staging all files, give a short summary listing every staged file and what it does."
     )
 
     graph = create_react_agent(model, tools)
