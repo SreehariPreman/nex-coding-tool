@@ -202,14 +202,19 @@ def run_interactive_shell(start_dir: Path | None) -> int:
                 ui.print_error(err, f"cd: {exc}")
             continue
 
-        if cmd in {"create", "agent"}:
-            task = " ".join(args).strip()
+        if cmd in {"create", "agent"} or cmd.startswith("@"):
+            if cmd.startswith("@"):
+                task = " ".join(parts).strip()
+            else:
+                task = " ".join(args).strip()
+                
             if not task:
                 ui.print_error(
                     err,
                     f"{cmd}: missing task. Example: [bold]create[/] a python file that prints primes up to 10",
                 )
                 continue
+            from nex_coding.task_runner import run_task_and_confirm
             run_task_and_confirm(Path(os.getcwd()).resolve(), task)
             continue
 

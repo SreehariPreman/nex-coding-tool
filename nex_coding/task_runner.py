@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import re
+import difflib
 from pathlib import Path
 
 from rich.markdown import Markdown
@@ -26,12 +28,37 @@ def _preview_staged(console, root: Path, staged: list[dict[str, str]]) -> None:
         rel = item["path"]
         content = item.get("content", "")
         console.print(f"\n[bold cyan]{rel}[/]")
-        ext = Path(rel).suffix.lstrip(".") or "text"
-        lang = "python" if ext == "py" else ext
         try:
-            console.print(Syntax(content, lexer_name=lang, theme="monokai", line_numbers=True, word_wrap=True))
-        except Exception:
-            console.print(content)
+            path = resolve_under_root(root, rel)
+            exist = path.exists()
+        except ValueError:
+            exist = False
+            
+        if exist:
+            try:
+                old_content = path.read_text(encoding="utf-8")
+            except Exception:
+                old_content = ""
+                
+            diff = list(difflib.unified_diff(
+                old_content.splitlines(keepends=True),
+                content.splitlines(keepends=True),
+                fromfile=f"a/{rel}",
+                tofile=f"b/{rel}",
+                n=3
+            ))
+            if diff:
+                diff_text = "".join(diff)
+                console.print(Syntax(diff_text, lexer="diff", theme="monokai", line_numbers=False, word_wrap=True))
+            else:
+                console.print("[dim]No changes to this file.[/]")
+        else:
+            ext = Path(rel).suffix.lstrip(".") or "text"
+            lang = "python" if ext == "py" else ext
+            try:
+                console.print(Syntax(content, lexer=lang, theme="monokai", line_numbers=True, word_wrap=True))
+            except Exception:
+                console.print(content)
     console.print()
     console.print(
         Panel(
@@ -71,6 +98,21 @@ def run_task_and_confirm(cwd: Path, task: str) -> int:
             streamed_chunks.append(text)
             out.print(text, end="", highlight=False, markup=False)
             sys.stdout.flush()
+
+    # Parse @ mentions to inject file content directly
+    mentions = set(re.findall(r"@([^\s]+)", task))
+    context_text = ""
+    for m in mentions:
+        try:
+            p = resolve_under_root(cwd, m)
+            if p.is_file():
+                file_content = p.read_text(encoding="utf-8")
+                context_text += f"\n\n--- Mentioned File: {m} ---\n{file_content}\n---------------------------\n"
+        except Exception:
+            pass
+            
+    if context_text:
+        task += "\n" + context_text
 
     try:
         out.print(Rule("[bold cyan]Agent[/]", style="cyan"))
