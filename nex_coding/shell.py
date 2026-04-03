@@ -256,18 +256,11 @@ def run_interactive_shell(start_dir: Path | None) -> int:
             continue
 
         if cmd in {"create", "agent"} or cmd.startswith("@"):
+            # Explicit prefix: strip the keyword, use the rest as the task.
             if cmd.startswith("@"):
-                task = " ".join(parts).strip()
+                task = stripped
             else:
-                task = " ".join(args).strip()
-
-            if not task:
-                ui.print_error(
-                    err,
-                    f"{cmd}: missing task. Example: [bold]create[/] a python file that prints primes up to 10",
-                )
-                continue
-            from nex_coding.task_runner import run_task_and_confirm
+                task = " ".join(args).strip() or stripped
             run_task_and_confirm(Path(os.getcwd()).resolve(), task, session)
             continue
 
@@ -283,24 +276,18 @@ def run_interactive_shell(start_dir: Path | None) -> int:
             _print_session_context(out, session)
             continue
 
-        if cmd in _INTERNAL:
-            ui.print_error(err, f"internal command not implemented: {cmd}")
+        # ── Known subprocess commands (ls, cat, grep, …) ──────────────────
+        if cmd in _SUBPROCESS_ALLOW:
+            exe = shutil.which(cmd)
+            if exe is None:
+                ui.print_error(err, f"command not found on PATH: {cmd!r}")
+            else:
+                try:
+                    subprocess.run([exe, *args], cwd=os.getcwd())
+                except OSError as exc:
+                    ui.print_error(err, f"could not run {cmd!r}: {exc}")
             continue
 
-        if cmd not in _SUBPROCESS_ALLOW:
-            ui.print_error(
-                err,
-                f"unknown or disallowed command: {cmd!r}. Type [bold]help[/] for what is supported.",
-            )
-            continue
-
-        exe = shutil.which(cmd)
-        if exe is None:
-            ui.print_error(err, f"command not found on PATH: {cmd!r}")
-            continue
-
-        try:
-            subprocess.run([exe, *args], cwd=os.getcwd())
-        except OSError as exc:
-            ui.print_error(err, f"could not run {cmd!r}: {exc}")
-            continue
+        # ── Everything else → natural-language agent request ─────────────
+        # No prefix needed. Just type what you want.
+        run_task_and_confirm(Path(os.getcwd()).resolve(), stripped, session)
