@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import platform
+import subprocess
 import sys
+from pathlib import Path
 from typing import Iterable
 
 from rich import box
@@ -12,8 +16,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.text import Text
-
-_PROMPT_MARKUP = "[bold bright_green]nex-os[/][dim]:[/][bold green]~[/][bold bright_green]$[/] "
+from rich.table import Table
 
 
 def stdout_console() -> Console:
@@ -24,62 +27,108 @@ def stderr_console() -> Console:
     return Console(highlight=False, stderr=True, soft_wrap=True)
 
 
-def prompt_markup() -> str:
-    return _PROMPT_MARKUP
+def prompt_markup(cwd: str = "") -> str:
+    if cwd:
+        p = Path(cwd)
+        path_name = p.name if p.name else str(p)
+    else:
+        path_name = "~"
+    return f"[bold cyan]╭─[/][bold bright_blue]nex[/] [magenta]✨[/] [dim]{path_name}[/]\n[bold cyan]╰─❯[/] "
+
+
+def _get_git_branch(cwd: str) -> str | None:
+    try:
+        res = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        branch = res.stdout.strip()
+        if branch:
+            dirty_res = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            is_dirty = bool(dirty_res.stdout.strip())
+            return f"{branch}{'*' if is_dirty else ''}"
+    except Exception:
+        pass
+    return None
+
+
+def _get_env_info() -> str:
+    py_version = platform.python_version()
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv:
+        venv_name = Path(venv).name
+        return f"Python {py_version} ({venv_name})"
+    return f"Python {py_version} (Global)"
+
+
+def _get_project_stats(cwd: str) -> str:
+    try:
+        p = Path(cwd)
+        files = [f for f in p.iterdir() if f.is_file()]
+        dirs = [d for d in p.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        return f"{len(files)} files, {len(dirs)} folders"
+    except Exception:
+        return ""
 
 
 def print_welcome(console: Console, cwd: str) -> None:
-    ascii_art = """[bold bright_green]
-    _   __  ______  _  __
-   / | / / / ____/ | |/ /
-  /  |/ / / __/    |   / 
- / /|  / / /___   /   |  
-/_/ |_/ /_____/  /_/|_|  
-[/]"""
-    title = Text.from_markup(ascii_art)
-
-    tagline = Text(
-        "INITIALIZING SYSTEM... ACCESS GRANTED",
-        style="bold green",
-        justify="center",
-    )
-
-    path_line = Text()
-    path_line.append("MOUNT POINT: ", style="bold green dim")
-    path_line.append(cwd, style="bold bright_green")
+    title = Text("Nex Workspace", style="bold bright_blue")
+    
+    table = Table.grid(padding=(0, 2))
+    table.add_column(style="dim", justify="right")
+    table.add_column()
+    
+    table.add_row("Directory", f"[bold cyan]{cwd}[/]")
+    
+    branch = _get_git_branch(cwd)
+    if branch:
+        table.add_row("Git Branch", f"[magenta]🌿 {branch}[/]")
+        
+    table.add_row("Environment", f"[blue]🐍 {_get_env_info()}[/]")
+    
+    stats = _get_project_stats(cwd)
+    if stats:
+        table.add_row("Contents", f"[dim]{stats}[/]")
 
     inner = Group(
         Align.center(title),
         Text(""),
-        Align.center(tagline),
-        Text(""),
-        Rule(style="green"),
-        Text(""),
-        path_line,
+        Align.center(table),
     )
 
     panel = Panel(
         inner,
-        title="[bold bright_green]NEX_OS_BOOT_SEQ[/]",
-        border_style="bold green",
-        box=box.SQUARE,
-        padding=(1, 2),
-        width=min(console.width, 88)
-        if console.width is not None
-        else None,
+        border_style="cyan",
+        box=box.ROUNDED,
+        padding=(1, 4),
+        width=min(console.width, 88) if console.width is not None else None,
     )
 
     console.print()
     console.print(Align.center(panel))
     console.print()
-    console.print(
-        Align.center(
-            Text(
-                "TYPE `help` FOR SYSTEM COMMANDS  ·  `exit` TO TERMINATE",
-                style="bold green dim",
-            )
-        )
-    )
+    
+    # Sleek footer
+    footer = Text()
+    footer.append(" [dim]Shortcuts: [/]")
+    footer.append("help", style="bold cyan")
+    footer.append(" [dim]|[/] ")
+    footer.append("Ctrl+C", style="bold cyan")
+    footer.append(" [dim]cancel[/] ")
+    footer.append(" [dim]|[/] ")
+    footer.append("Ctrl+D", style="bold cyan")
+    footer.append(" [dim]exit[/] ")
+    
+    console.print(Align.center(footer))
     console.print()
 
 
@@ -88,33 +137,27 @@ def print_help(
     internal: Iterable[str],
     external: Iterable[str],
 ) -> None:
-    internal_s = " ".join(f"`{c}`" for c in sorted(internal) if c != "quit")
-    external_s = " ".join(f"`{c}`" for c in sorted(external))
-    md = f"""## LOADED MODULES (INTERNAL)
-{internal_s} — `quit` is an alias for `exit`.
-
-## SYSTEM BINARIES (EXTERNAL)
-{external_s}
-
-> **WARNING:** UNREGISTERED COMMANDS WILL BE REJECTED. 
-> NO SANDBOX DETECTED. ALL ACTIONS RUN ON BARE METAL.
-"""
-    console.print(
-        Panel(
-            Markdown(md),
-            title="[bold bright_green]SYSTEM_MANUAL[/]",
-            border_style="bold green",
-            box=box.SQUARE,
-            padding=(1, 2),
-        )
-    )
+    internal_s = ", ".join(f"[bold cyan]{c}[/]" for c in sorted(internal) if c != "quit")
+    external_s = ", ".join(f"[bright_blue]{c}[/]" for c in sorted(external))
+    
+    table = Table(title="[bold]Command Palette[/]", box=box.ROUNDED, border_style="cyan", padding=(0, 2))
+    table.add_column("Category", style="dim", no_wrap=True)
+    table.add_column("Commands")
+    
+    table.add_row("Internal", internal_s)
+    table.add_row("External", external_s)
+    
+    console.print()
+    console.print(table)
+    console.print("[dim]Commands not in this list are rejected.[/]")
+    console.print()
 
 
 def print_goodbye(console: Console) -> None:
     console.print()
-    console.print(Align.center(Text("CONNECTION TERMINATED.", style="bold green dim")))
+    console.print(Align.center(Text("Session ended. See you later ✨", style="italic cyan")))
     console.print()
 
 
 def print_error(err: Console, message: str) -> None:
-    err.print(f"[bold red]FATAL_ERROR[/] [red]{message}[/]")
+    err.print(f"╭─ [bold red]Error[/]\n╰─❯ [red]{message}[/]")

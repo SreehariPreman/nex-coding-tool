@@ -104,7 +104,7 @@ def run_interactive_shell(start_dir: Path | None) -> int:
 
     while True:
         try:
-            line = out.input(ui.prompt_markup())
+            line = out.input(ui.prompt_markup(os.getcwd()))
         except EOFError:
             out.print()
             ui.print_goodbye(out)
