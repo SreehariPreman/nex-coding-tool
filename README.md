@@ -67,13 +67,3 @@ api_key = "sk-ant-..."   # Your API key. Skipped for "ollama".
 ```
 
 Nex validates your configuration on startup, testing the API key format and connection status before generating the shell interface!
-
-## Layout
-
-| Path | Role |
-|------|------|
-| `nex_coding/cli.py` | Argument parsing, `--about`, starts the shell |
-| `nex_coding/shell.py` | Interactive loop and command dispatch |
-| `nex_coding/ui.py` | Rich layouts: welcome, help, prompts, errors |
-| `nex_coding/__main__.py` | Enables `python -m nex_coding` |
-| `pyproject.toml` | Package metadata, dependencies, `nex-coding` script |
