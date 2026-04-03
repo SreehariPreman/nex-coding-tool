@@ -7,7 +7,7 @@ CORS(app)
 
 # Hardcoded credentials
 VALID_USERNAME = 'admin'
-VALID_PASSWORD = 'password123'
+VALID_PASSWORD = 'admin123'
 
 @app.route('/api/login', methods=['POST'])
 def login():
