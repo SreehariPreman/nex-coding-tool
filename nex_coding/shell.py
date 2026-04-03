@@ -11,10 +11,23 @@ from pathlib import Path
 
 from nex_coding import ui
 from nex_coding.config import load_config, validate_config
+from nex_coding.task_runner import run_task_and_confirm, run_undo
 import time
 
 # Handled in this process so state (cwd) matches what users expect.
-_INTERNAL = frozenset({"cd", "pwd", "exit", "quit", "help", "clear"})
+_INTERNAL = frozenset(
+    {
+        "cd",
+        "pwd",
+        "exit",
+        "quit",
+        "help",
+        "clear",
+        "create",
+        "agent",
+        "undo",
+    }
+)
 
 # Run via PATH with no shell; first token must match exactly.
 _SUBPROCESS_ALLOW = frozenset(
@@ -187,6 +200,21 @@ def run_interactive_shell(start_dir: Path | None) -> int:
                 os.chdir(dest)
             except OSError as exc:
                 ui.print_error(err, f"cd: {exc}")
+            continue
+
+        if cmd in {"create", "agent"}:
+            task = " ".join(args).strip()
+            if not task:
+                ui.print_error(
+                    err,
+                    f"{cmd}: missing task. Example: [bold]create[/] a python file that prints primes up to 10",
+                )
+                continue
+            run_task_and_confirm(Path(os.getcwd()).resolve(), task)
+            continue
+
+        if cmd == "undo":
+            run_undo(Path(os.getcwd()).resolve())
             continue
 
         if cmd in _INTERNAL:

@@ -1,4 +1,4 @@
-"""CLI entry point — interactive Nex shell and optional project blurb."""
+"""CLI entry point — starts the interactive Nex shell (coding agent runs only inside it)."""
 
 from __future__ import annotations
 
@@ -24,6 +24,10 @@ def _print_intro(prog: str) -> None:
         f"    $ {prog} /path/to/project",
         "    $ python -m nex_coding",
         "",
+        "  \033[1;92mCODING AGENT\033[0m",
+        "  \033[32m────────────\033[0m",
+        "    Start the shell, then:  create …  |  agent …  |  undo",
+        "",
         "  \033[1;92mFLAGS & PARAMETERS\033[0m",
         "  \033[32m──────────────────\033[0m",
         "    --about    Print system parameters and terminate.",
@@ -40,16 +44,29 @@ def _print_intro(prog: str) -> None:
     print("\n".join(lines))
 
 
+def _shell_only_message(prog: str) -> None:
+    print(
+        "nex: the coding agent and undo run only inside the interactive shell.",
+        file=sys.stderr,
+    )
+    print(
+        f"  Start: {prog}    then:  create …  or  agent …  ·  undo",
+        file=sys.stderr,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="nex-coding",
-        description="Terminal-based coding CLI with an interactive Nex shell.",
+        description="Terminal-based Nex CLI: opens the interactive shell. "
+        "Use create / agent / undo inside the shell for LLM-backed edits.",
     )
     parser.add_argument(
         "workdir",
         nargs="?",
         default=None,
-        help="Directory to use as the initial working directory (default: current directory).",
+        metavar="WORKDIR",
+        help="Directory to start the shell in (default: current directory).",
     )
     parser.add_argument(
         "--about",
@@ -67,9 +84,26 @@ def main() -> int:
         _print_intro(parser.prog)
         return 0
 
-    start = Path(args.workdir).expanduser() if args.workdir else None
-    if start is not None and not start.exists():
-        print(f"nex: path does not exist: {start}", file=sys.stderr)
+    if args.workdir is None:
+        start = Path.cwd().resolve()
+    else:
+        raw = Path(args.workdir).expanduser()
+        if raw.is_dir():
+            start = raw.resolve()
+        elif raw.exists():
+            print(f"nex: not a directory: {raw}", file=sys.stderr)
+            return 1
+        else:
+            # Looks like a mistaken task string (CLI no longer accepts tasks here).
+            _shell_only_message(parser.prog)
+            return 2
+
+    if not start.is_dir():
+        print(f"nex: path does not exist or is not a directory: {start}", file=sys.stderr)
         return 1
 
     return run_interactive_shell(start)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

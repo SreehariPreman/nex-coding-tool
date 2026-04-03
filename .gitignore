@@ -12,3 +12,4 @@ __pycache__/
 *.pyzwzwzw
 .venv/
 nex_coding_tool.egg-info/
+.nex/

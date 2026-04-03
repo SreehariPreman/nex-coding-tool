@@ -123,7 +123,10 @@ def print_welcome(console: Console, cwd: str, config: dict = None) -> None:
     console.print()
     
     # Sleek footer
-    footer_text = " [dim]Shortcuts: [/][bold cyan]help[/] [dim]|[/] [bold cyan]Ctrl+C[/] [dim]cancel[/] [dim]|[/] [bold cyan]Ctrl+D[/] [dim]exit[/] "
+    footer_text = (
+        " [dim]Shortcuts: [/][bold cyan]create[/] [dim]/[/] [bold cyan]agent[/] [dim]task ·[/] "
+        "[bold cyan]undo[/] [dim]·[/] [bold cyan]help[/] [dim]|[/] [bold cyan]Ctrl+C[/] [dim]|[/] [bold cyan]Ctrl+D[/] [dim]exit[/] "
+    )
     footer = Text.from_markup(footer_text)
     
     console.print(Align.center(footer))
@@ -148,6 +151,11 @@ def print_help(
     console.print()
     console.print(table)
     console.print("[dim]Commands not in this list are rejected.[/]")
+    console.print(
+        "[dim]Coding agent (same as CLI, stays in shell): [/]"
+        "[bold cyan]create[/] [dim]or[/] [bold cyan]agent[/] [dim]then your request;[/] "
+        "[bold cyan]undo[/] [dim]reverts the last confirmed Nex git save.[/]"
+    )
     console.print()
 
 
